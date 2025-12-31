@@ -1,6 +1,6 @@
 """
 Discord Bot สำหรับเช็คสต็อกสินค้าและแจ้งเตือน
-รองรับการ deploy บน Railway
+รองรับการ deploy บน Railway + Web Dashboard
 """
 import discord
 import asyncio
@@ -17,7 +17,9 @@ load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))
-URL = os.getenv("PRODUCT_URL", "https://www.toylaxy.com/th/product/1227227/product-1227227?category_id=137697")
+
+# ไฟล์เก็บข้อมูลสินค้า
+PRODUCTS_FILE = "data/products.json"
 
 
 intents = discord.Intents.default()
@@ -34,11 +36,23 @@ CHECK_INTERVAL_MIN = int(os.getenv("CHECK_INTERVAL_MIN", "30"))
 CHECK_INTERVAL_MAX = int(os.getenv("CHECK_INTERVAL_MAX", "60"))
 CHECK_INTERVAL = [CHECK_INTERVAL_MIN, CHECK_INTERVAL_MAX]  # สลับเช็คทุกกี่วินาที
 
+# เก็บสถานะสินค้าแต่ละตัว
+product_states = {}
 
-async def get_product_info():
+def load_products():
+    """โหลดรายการสินค้าจากไฟล์"""
+    if os.path.exists(PRODUCTS_FILE):
+        with open(PRODUCTS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    # ถ้าไม่มีไฟล์ ให้สร้างค่า default จาก env
+    default_url = os.getenv("PRODUCT_URL", "https://www.toylaxy.com/th/product/1227227/product-1227227?category_id=137697")
+    return [{'id': 1, 'url': default_url, 'name': 'สินค้าเริ่มต้น', 'active': True}]
+
+
+async def get_product_info(url):
     """ดึงข้อมูลสินค้า"""
     async with aiohttp.ClientSession(headers=headers) as session:
-        async with session.get(URL, timeout=15) as r:
+        async with session.get(url, timeout=15) as r:
             html = await r.text()
 
     soup = BeautifulSoup(html, "html.parser")
@@ -73,29 +87,60 @@ async def get_product_info():
     return in_stock, name, image_url
 
 
-async def send_alert(channel, name, image_url, alert_number):
+async def send_alert(channel, name, image_url, alert_number, url):
     """ส่งข้อความแจ้งเตือน"""
     embed = discord.Embed(
         title="🚨 สินค้ามีของแล้ว!",
-        description=f"**{name}**\n[👉 คลิกเพื่อไปหน้าเว็บ]({URL})",
+        description=f"**{name}**\n[👉 คลิกเพื่อไปหน้าเว็บ]({url})",
         color=0x2ecc71  # สีเขียว
     )
     if image_url:
         embed.set_image(url=image_url)
-    embed.set_footer(text=f"🧪 ทดสอบระบบ | แจ้งเตือนครั้งที่ {alert_number}/{ALERT_COUNT}")
+    embed.set_footer(text=f"แจ้งเตือนครั้งที่ {alert_number}/{ALERT_COUNT}")
 
     await channel.send(embed=embed)
 
 
-async def send_multiple_alerts(channel, name, image_url):
-    """ส่งแจ้งเตือน 20 ครั้ง ห่างกันครั้งละ 10 วินาที"""
-    print(f"🔔 เริ่มแจ้งเตือน {ALERT_COUNT} ครั้ง...")
+async def send_multiple_alerts(channel, name, image_url, url):
+    """ส่งแจ้งเตือนหลายครั้ง"""
+    print(f"🔔 เริ่มแจ้งเตือน {ALERT_COUNT} ครั้ง สำหรับ: {name}")
     for i in range(1, ALERT_COUNT + 1):
-        await send_alert(channel, name, image_url, i)
+        await send_alert(channel, name, image_url, i, url)
         print(f"✅ ส่งแจ้งเตือนครั้งที่ {i}/{ALERT_COUNT}")
-        if i < ALERT_COUNT:  # ไม่ต้องรอหลังจากครั้งสุดท้าย
+        if i < ALERT_COUNT:
             await asyncio.sleep(ALERT_INTERVAL)
     print(f"✅ แจ้งเตือนครบ {ALERT_COUNT} ครั้งแล้ว")
+
+
+async def check_single_product(channel, product):
+    """เช็คสินค้า 1 ชิ้น"""
+    product_id = product['id']
+    product_url = product['url']
+    product_name = product.get('name', f"สินค้า #{product_id}")
+    
+    try:
+        print(f"🔍 กำลังเช็ค: {product_name}")
+        in_stock, name, image_url = await get_product_info(product_url)
+        
+        # ดึงสถานะเก่าของสินค้านี้
+        last_in_stock = product_states.get(product_id, False)
+        
+        # ถ้าหมดสต็อก
+        if not in_stock:
+            if last_in_stock:
+                print(f"📉 {product_name}: สินค้าหมดสต็อก")
+            product_states[product_id] = False
+            print(f"  └─ สถานะ: ❌ หมดสต็อก")
+        # มีของเข้าใหม่
+        elif in_stock and not last_in_stock:
+            print(f"🎉 {product_name}: พบสินค้ามีของเข้ามา!")
+            await send_multiple_alerts(channel, name, image_url, product_url)
+            product_states[product_id] = True
+        elif in_stock and last_in_stock:
+            print(f"  └─ สถานะ: ✅ ยังมีของอยู่")
+            
+    except Exception as e:
+        print(f"❌ เกิดข้อผิดพลาดในการเช็ค {product_name}: {e}")
 
 
 @client.event
@@ -119,53 +164,41 @@ async def on_ready():
         channel = await client.fetch_channel(CHANNEL_ID)
         print(f"✅ พบ Channel: {channel.name}")
         print(f"🆔 Channel ID: {channel.id}")
+        
+        # โหลดรายการสินค้า
+        products = load_products()
         print("\n" + "=" * 50)
-        print("📋 การตั้งค่า (TEST MODE):")
+        print("📋 การตั้งค่า:")
+        print(f"  ✔ จำนวนสินค้าที่เช็ค: {len(products)} รายการ")
         print(f"  ✔ แจ้งเตือน {ALERT_COUNT} ครั้ง (เฉพาะตอนมีของ)")
         print(f"  ✔ ห่างกันครั้งละ {ALERT_INTERVAL} วินาที")
-        print(f"  ✔ สลับเช็คทุก {CHECK_INTERVAL[0]} / {CHECK_INTERVAL[1]} วินาที")
-        print(f"  ✔ แจ้งใหม่ได้อีกถ้าสินค้าหมดแล้วกลับมาอีกครั้ง")
+        print(f"  ✔ สลับเช็คทุก {CHECK_INTERVAL[0]}-{CHECK_INTERVAL[1]} วินาที")
         print("=" * 50)
         print("⚠️  กด Ctrl+C เพื่อหยุดการทำงาน\n")
 
-        last_in_stock = False
         check_count = 0
 
-        # เช็คสถานะเริ่มต้น
-        in_stock, name, image_url = await get_product_info()
-        print(f"📊 สถานะเริ่มต้น: {'✅ มีของ' if in_stock else '❌ หมดสต็อก'}")
-        
-        # ถ้าสินค้ามีของตั้งแต่เริ่มต้น ให้แจ้งเตือนทันที
-        if in_stock:
-            print("🎉 สินค้ามีของตั้งแต่เริ่มต้น! เริ่มแจ้งเตือน...")
-            await send_multiple_alerts(channel, name, image_url)
-            last_in_stock = True
-        else:
-            last_in_stock = False
+        # เช็คสถานะเริ่มต้นทุกสินค้า
+        print("📊 เช็คสถานะเริ่มต้น...")
+        for product in products:
+            if product.get('active', True):
+                await check_single_product(channel, product)
+                await asyncio.sleep(2)  # รอ 2 วิก่อนเช็คสินค้าถัดไป
         print()
 
         # Loop เช็คสต็อก
         while True:
             try:
                 check_count += 1
-                print(f"[#{check_count}] 🔍 กำลังเช็คสต็อกสินค้า...")
-                in_stock, name, image_url = await get_product_info()
-
-                # ถ้าหมดสต็อก - ไม่ส่งข้อความใดๆ
-                if not in_stock:
-                    if last_in_stock:  # เปลี่ยนจากมีของเป็นหมด
-                        print("📉 สินค้าหมดสต็อก - รอให้มีของเข้ามาอีกครั้ง")
-                    last_in_stock = False
-                    print(f"📊 สถานะ: ❌ หมดสต็อก (ไม่ส่งข้อความใน Discord)")
-                    # ไม่มี await channel.send() ที่นี่ - ไม่ส่งข้อความ
-                # มีของเข้าใหม่ (เปลี่ยนจากหมดเป็นมีของ) - แจ้งเตือนเฉพาะตอนนี้เท่านั้น
-                elif in_stock and not last_in_stock:
-                    print("🎉 พบสินค้ามีของเข้ามา! เริ่มแจ้งเตือน...")
-                    await send_multiple_alerts(channel, name, image_url)
-                    last_in_stock = True
-                elif in_stock and last_in_stock:
-                    print("✅ สินค้ายังมีของอยู่ (ไม่แจ้งเตือนซ้ำ)")
-                    # ไม่มี await channel.send() ที่นี่ - ไม่ส่งข้อความ
+                products = load_products()  # โหลดรายการใหม่ทุกครั้ง (เผื่อมีการเปลี่ยนแปลง)
+                active_products = [p for p in products if p.get('active', True)]
+                
+                print(f"\n[รอบที่ #{check_count}] กำลังเช็ค {len(active_products)} รายการ...")
+                print("-" * 50)
+                
+                for product in active_products:
+                    await check_single_product(channel, product)
+                    await asyncio.sleep(2)  # รอ 2 วิก่อนเช็คสินค้าถัดไป
 
             except Exception as e:
                 print(f"❌ เกิดข้อผิดพลาดในการเช็ค: {e}")
@@ -174,7 +207,7 @@ async def on_ready():
 
             # สลับเช็คตามช่วงเวลาที่กำหนด
             wait_time = random.choice(CHECK_INTERVAL)
-            print(f"⏱️  จะเช็คอีกครั้งใน {wait_time} วินาที...\n")
+            print(f"\n⏱️  จะเช็คอีกครั้งใน {wait_time} วินาที...\n")
             await asyncio.sleep(wait_time)
 
     except KeyboardInterrupt:

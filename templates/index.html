@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discord Stock Checker - Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: #5865F2;
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        .content {
+            padding: 30px;
+        }
+        .add-form {
+            background: #f7f7f7;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border 0.3s;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #5865F2;
+        }
+        .btn {
+            background: #5865F2;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #4752C4;
+        }
+        .btn-danger {
+            background: #ED4245;
+        }
+        .btn-danger:hover {
+            background: #C03537;
+        }
+        .btn-small {
+            padding: 8px 15px;
+            font-size: 14px;
+        }
+        .products-list {
+            list-style: none;
+        }
+        .product-item {
+            background: #f9f9f9;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 10px;
+            border-left: 4px solid #5865F2;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .product-item.inactive {
+            opacity: 0.6;
+            border-left-color: #999;
+        }
+        .product-info {
+            flex: 1;
+        }
+        .product-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .product-url {
+            font-size: 14px;
+            color: #666;
+            word-break: break-all;
+        }
+        .product-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .status-active {
+            background: #3BA55D;
+            color: white;
+        }
+        .status-inactive {
+            background: #999;
+            color: white;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+        .empty-state h3 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Discord Stock Checker</h1>
+            <p>จัดการรายการสินค้าที่ต้องการเช็คสต็อก</p>
+        </div>
+        
+        <div class="content">
+            <!-- ฟอร์มเพิ่มสินค้า -->
+            <div class="add-form">
+                <h2 style="margin-bottom: 20px;">➕ เพิ่มสินค้าใหม่</h2>
+                <form method="POST" action="/add">
+                    <div class="form-group">
+                        <label for="name">ชื่อสินค้า (ไม่บังคับ)</label>
+                        <input type="text" id="name" name="name" placeholder="เช่น Gundam RX-78-2">
+                    </div>
+                    <div class="form-group">
+                        <label for="url">URL สินค้า *</label>
+                        <input type="url" id="url" name="url" placeholder="https://www.toylaxy.com/..." required>
+                    </div>
+                    <button type="submit" class="btn">เพิ่มสินค้า</button>
+                </form>
+            </div>
+
+            <!-- รายการสินค้า -->
+            <h2 style="margin-bottom: 20px;">📦 รายการสินค้า ({{ products|length }})</h2>
+            
+            {% if products %}
+            <ul class="products-list">
+                {% for product in products %}
+                <li class="product-item {% if not product.active %}inactive{% endif %}">
+                    <div class="product-info">
+                        <div class="product-name">
+                            {{ product.name }}
+                            <span class="status-badge {% if product.active %}status-active{% else %}status-inactive{% endif %}">
+                                {% if product.active %}✓ กำลังเช็ค{% else %}⏸ หยุดชั่วคราว{% endif %}
+                            </span>
+                        </div>
+                        <div class="product-url">{{ product.url }}</div>
+                    </div>
+                    <div class="product-actions">
+                        <form method="POST" action="/toggle/{{ product.id }}" style="display: inline;">
+                            <button type="submit" class="btn btn-small">
+                                {% if product.active %}⏸ หยุด{% else %}▶ เริ่ม{% endif %}
+                            </button>
+                        </form>
+                        <form method="POST" action="/delete/{{ product.id }}" style="display: inline;">
+                            <button type="submit" class="btn btn-danger btn-small" onclick="return confirm('ต้องการลบสินค้านี้?')">
+                                🗑️ ลบ
+                            </button>
+                        </form>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="empty-state">
+                <h3>ยังไม่มีสินค้า</h3>
+                <p>เพิ่มสินค้าแรกของคุณด้านบน</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
