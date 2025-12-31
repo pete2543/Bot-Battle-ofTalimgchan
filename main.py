@@ -32,8 +32,8 @@ headers = {
 # การตั้งค่าจาก environment variables หรือใช้ค่า default
 ALERT_COUNT = int(os.getenv("ALERT_COUNT", "10"))  # แจ้งเตือนกี่ครั้ง
 ALERT_INTERVAL = int(os.getenv("ALERT_INTERVAL", "10"))  # ห่างกันครั้งละกี่วินาที
-CHECK_INTERVAL_MIN = int(os.getenv("CHECK_INTERVAL_MIN", "30"))
-CHECK_INTERVAL_MAX = int(os.getenv("CHECK_INTERVAL_MAX", "60"))
+CHECK_INTERVAL_MIN = int(os.getenv("CHECK_INTERVAL_MIN", "600"))
+CHECK_INTERVAL_MAX = int(os.getenv("CHECK_INTERVAL_MAX", "900"))
 CHECK_INTERVAL = [CHECK_INTERVAL_MIN, CHECK_INTERVAL_MAX]  # สลับเช็คทุกกี่วินาที
 
 # เก็บสถานะสินค้าแต่ละตัว
