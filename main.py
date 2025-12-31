@@ -119,6 +119,7 @@ async def check_single_product(channel, product):
     
     try:
         print(f"🔍 กำลังเช็ค: {product_name}")
+        print(f"  📍 URL: {product_url}")
         in_stock, name, image_url = await get_product_info(product_url)
         
         # ดึงสถานะเก่าของสินค้านี้
@@ -133,6 +134,7 @@ async def check_single_product(channel, product):
         # มีของเข้าใหม่
         elif in_stock and not last_in_stock:
             print(f"🎉 {product_name}: พบสินค้ามีของเข้ามา!")
+            print(f"  📍 URL: {product_url}")
             await send_multiple_alerts(channel, name, image_url, product_url)
             product_states[product_id] = True
         elif in_stock and last_in_stock:
@@ -140,6 +142,7 @@ async def check_single_product(channel, product):
             
     except Exception as e:
         print(f"❌ เกิดข้อผิดพลาดในการเช็ค {product_name}: {e}")
+        print(f"  📍 URL: {product_url}")
 
 
 @client.event
