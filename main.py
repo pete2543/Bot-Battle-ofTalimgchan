@@ -1,6 +1,6 @@
 """
 Discord Bot สำหรับเช็คสต็อกสินค้าและแจ้งเตือน
-รองรับการ deploy บน Railway + Web Dashboard
+รองรับการ deploy บน Railway + Web Dashboard + PostgreSQL
 """
 import discord
 import asyncio
@@ -11,15 +11,13 @@ import re
 import json
 import os
 from dotenv import load_dotenv
+from database import load_products
 
 # โหลด environment variables
 load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))
-
-# ไฟล์เก็บข้อมูลสินค้า
-PRODUCTS_FILE = "data/products.json"
 
 
 intents = discord.Intents.default()
@@ -37,15 +35,6 @@ CHECK_INTERVAL = [CHECK_INTERVAL_MIN, CHECK_INTERVAL_MAX]  # สลับเช�
 
 # เก็บสถานะสินค้าแต่ละตัว
 product_states = {}
-
-def load_products():
-    """โหลดรายการสินค้าจากไฟล์"""
-    if os.path.exists(PRODUCTS_FILE):
-        with open(PRODUCTS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    # ถ้าไม่มีไฟล์ ให้สร้างค่า default จาก env
-    default_url = os.getenv("PRODUCT_URL", "https://www.toylaxy.com/th/product/1227227/product-1227227?category_id=137697")
-    return [{'id': 1, 'url': default_url, 'name': 'สินค้าเริ่มต้น', 'active': True}]
 
 
 async def get_product_info(url):

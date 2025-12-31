@@ -2,26 +2,16 @@
 Web Dashboard สำหรับจัดการ URL สินค้าที่ต้องการเช็ค
 """
 from flask import Flask, render_template, request, redirect, url_for, jsonify
-import json
 import os
+from database import init_database, load_products, add_product, delete_product, toggle_product
 
 app = Flask(__name__)
 
-# ไฟล์เก็บข้อมูล products
-PRODUCTS_FILE = "data/products.json"
-
-def load_products():
-    """โหลดรายการสินค้าจากไฟล์"""
-    if os.path.exists(PRODUCTS_FILE):
-        with open(PRODUCTS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return []
-
-def save_products(products):
-    """บันทึกรายการสินค้าลงไฟล์"""
-    os.makedirs(os.path.dirname(PRODUCTS_FILE), exist_ok=True)
-    with open(PRODUCTS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(products, f, ensure_ascii=False, indent=2)
+# Initialize database on startup
+try:
+    init_database()
+except Exception as e:
+    print(f"⚠️  Warning: Could not initialize database: {e}")
 
 @app.route('/')
 def index():
@@ -30,41 +20,28 @@ def index():
     return render_template('index.html', products=products)
 
 @app.route('/add', methods=['POST'])
-def add_product():
+def add_product_route():
     """เพิ่มสินค้าใหม่"""
     url = request.form.get('url', '').strip()
     name = request.form.get('name', '').strip()
     
     if url:
-        products = load_products()
-        product_id = max([p.get('id', 0) for p in products], default=0) + 1
-        products.append({
-            'id': product_id,
-            'url': url,
-            'name': name or f"สินค้า #{product_id}",
-            'active': True
-        })
-        save_products(products)
+        if not name:
+            name = f"สินค้า #{len(load_products()) + 1}"
+        add_product(url, name)
     
     return redirect(url_for('index'))
 
 @app.route('/delete/<int:product_id>', methods=['POST'])
-def delete_product(product_id):
+def delete_product_route(product_id):
     """ลบสินค้า"""
-    products = load_products()
-    products = [p for p in products if p['id'] != product_id]
-    save_products(products)
+    delete_product(product_id)
     return redirect(url_for('index'))
 
 @app.route('/toggle/<int:product_id>', methods=['POST'])
-def toggle_product(product_id):
+def toggle_product_route(product_id):
     """เปิด/ปิดการเช็คสินค้า"""
-    products = load_products()
-    for p in products:
-        if p['id'] == product_id:
-            p['active'] = not p.get('active', True)
-            break
-    save_products(products)
+    toggle_product(product_id)
     return redirect(url_for('index'))
 
 @app.route('/api/products')
