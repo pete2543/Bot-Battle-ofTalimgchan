@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# Environment variables (สำคัญมาก - ห้าม commit)
+.env
+
 # Distribution / packaging
 .Python
 build/
